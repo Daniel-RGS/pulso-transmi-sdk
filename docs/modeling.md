@@ -12,6 +12,7 @@ Con el entorno virtual activo y los datos en `data/`:
 set -a && source .env && set +a
 .venv/bin/python examples/07_register_experiment.py
 .venv/bin/python examples/08_generate_predictions.py
+.venv/bin/python examples/09_submit_prediction.py --dry-run
 ```
 
 El primer comando compara el baseline diario (`shift(96)`) con el semanal
@@ -37,6 +38,18 @@ los modelos y sus metricas, pero no sube los binarios locales.
 El ultimo comando genera 12 predicciones por horizonte y las guarda en
 `predictions`. `actual_demand` queda vacio hasta que la API libere esos periodos;
 en ese momento pueden calcularse metricas de desempeno.
+
+Para la actividad de entrega, entra primero al portal academico, genera tu
+`PULSO_API_KEY` y guardala localmente. Luego revisa el payload con `--dry-run` y
+envialo con:
+
+```bash
+set -a && source .env && set +a
+.venv/bin/python examples/09_submit_prediction.py
+```
+
+El endpoint actual exige 12 predicciones para el ciclo abierto y usa una clave
+personal del portal, no la clave de Supabase.
 
 ## GitHub Actions
 
