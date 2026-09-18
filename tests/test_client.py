@@ -7,6 +7,8 @@ from pulso_transmi import PulsoTransmiClient
 
 
 def handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/health":
+        return httpx.Response(200, json={"status": "ok"})
     if request.url.path == "/v1/meta":
         content = b"station_id,name\n03000,Portal Suba\n"
         return httpx.Response(200, json={
@@ -37,6 +39,11 @@ def handler(request: httpx.Request) -> httpx.Response:
 
 def client() -> PulsoTransmiClient:
     return PulsoTransmiClient(base_url="https://example.test", transport=httpx.MockTransport(handler))
+
+
+def test_ping_returns_200() -> None:
+    with client() as api:
+        assert api.ping() == 200
 
 
 def test_stations_keep_leading_zero() -> None:

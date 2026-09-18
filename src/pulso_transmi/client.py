@@ -54,6 +54,9 @@ class PulsoTransmiClient:
         except httpx.HTTPError as exc:
             raise PulsoTransmiError(f"GET {path} failed: {exc}") from exc
 
+    def ping(self) -> int:
+        return self._get("/health").status_code
+
     def meta(self) -> dict[str, Any]:
         return self._get("/v1/meta").json()
 

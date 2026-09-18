@@ -16,7 +16,7 @@ def main() -> None:
         parse_dates=["observed_at"],
     ).sort_values(["station_id", "observed_at"])
 
-    observations["prediction"] = observations.groupby("station_id")["demand"].shift(96)
+    observations["prediction"] = observations.groupby("station_id")["demand"].shift(672)
     cutoff = observations["observed_at"].max() - timedelta(days=7)
     validation = observations.loc[observations["observed_at"] > cutoff].dropna().copy()
     scores = accuracy_by_station(validation)

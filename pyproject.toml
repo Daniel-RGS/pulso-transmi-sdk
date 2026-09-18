@@ -17,6 +17,10 @@ dependencies = [
 [project.optional-dependencies]
 ml = ["scikit-learn>=1.5,<2"]
 dev = ["pytest>=8,<9"]
+viz = ["matplotlib>=3.9,<4"]
+
+[project.scripts]
+pulso-transmi = "pulso_transmi.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

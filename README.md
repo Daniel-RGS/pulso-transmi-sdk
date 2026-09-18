@@ -125,8 +125,37 @@ Supabase es opcional para persistir ejecuciones, métricas, predicciones y estad
 del modelo. Vercel es opcional y corresponde al bono de visualización. Ninguna de
 las dos plataformas reemplaza el repositorio ni GitHub Actions.
 
+### Esquema e ingesta
+
+Aplica [`supabase/schema.sql`](supabase/schema.sql) desde el SQL Editor de
+Supabase. Después configura `SUPABASE_URL` y `SUPABASE_KEY` y ejecuta:
+
+```bash
+source .venv/bin/activate
+pulso-transmi ingest
+```
+
+Para validar el proceso sin escribir datos usa `--dry-run`. El comando descarga
+las páginas de la API, valida duplicados y nulos, y carga los datos en lotes
+idempotentes mediante la API REST de Supabase:
+
+```bash
+pulso-transmi ingest --dry-run
+pulso-transmi ingest --start 2026-08-01T00:00:00-05:00
+```
+
+Usa la `service key` únicamente en GitHub Actions o backend. No la expongas en
+el navegador ni la guardes en el repositorio.
+
 Consulta [docs/student-project.md](docs/student-project.md) para el flujo completo
 y los entregables.
+
+## Modelado
+
+La rama `model-training` contiene el experimento reproducible de baselines y
+modelos por horizonte. Consulta [docs/modeling.md](docs/modeling.md) para
+ejecutar la comparacion, entrenar los cuatro modelos y registrar sus metricas
+en Supabase.
 
 ## Métrica
 
