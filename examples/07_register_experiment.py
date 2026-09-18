@@ -11,8 +11,6 @@ import httpx
 
 
 EXPERIMENT_VERSION = "hgb-v1"
-RUN_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:{EXPERIMENT_VERSION}:2026-09-01"))
-FEATURE_SET_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:features:{EXPERIMENT_VERSION}"))
 
 
 def upsert(client: httpx.Client, table: str, rows: list[dict[str, Any]], conflict: str) -> list[dict[str, Any]]:
@@ -29,6 +27,9 @@ def upsert(client: httpx.Client, table: str, rows: list[dict[str, Any]], conflic
 def main() -> None:
     metrics_path = Path("artifacts/model_metrics.json")
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    run_key = f"pulso-transmi:{EXPERIMENT_VERSION}:{metrics['dataset_version']}:{metrics['dataset_hash']}"
+    run_id = str(uuid.uuid5(uuid.NAMESPACE_URL, run_key))
+    feature_set_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:features:{EXPERIMENT_VERSION}"))
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
     if not url or not key:
@@ -46,16 +47,16 @@ def main() -> None:
     }
     with httpx.Client(base_url=f"{url.rstrip('/')}/rest/v1", headers=headers, timeout=60) as client:
         upsert(client, "pipeline_runs", [{
-            "run_id": RUN_ID,
+            "run_id": run_id,
             "started_at": metrics["cutoff"],
             "finished_at": metrics["cutoff"],
             "data_cutoff": metrics["cutoff"],
-            "git_commit": git_commit,
+            "git_commit": metrics.get("code_commit") or git_commit,
             "status": "success",
             "retrain_reason": "initial_horizon_model",
         }], "run_id")
         upsert(client, "feature_sets", [{
-            "feature_set_id": FEATURE_SET_ID,
+            "feature_set_id": feature_set_id,
             "name": "pulso-transmi-features",
             "version": EXPERIMENT_VERSION,
             "definition": {"features": metrics["feature_names"], "validation_days": 7},
@@ -79,16 +80,25 @@ def main() -> None:
         for horizon, details in metrics["models"].items():
             metric_rows.append({
                 "metric_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:metric:{EXPERIMENT_VERSION}:{horizon}")),
-                "run_id": RUN_ID,
+                "run_id": run_id,
                 "model_id": models_by_name[horizon],
                 "metric_name": f"wape_{horizon}",
                 "window_start": metrics["cutoff"],
                 "window_end": metrics["cutoff"],
                 "metric_value": details["model_wape"],
             })
+            metric_rows.append({
+                "metric_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:accuracy:{EXPERIMENT_VERSION}:{horizon}")),
+                "run_id": run_id,
+                "model_id": models_by_name[horizon],
+                "metric_name": f"accuracy_{horizon}",
+                "window_start": metrics["cutoff"],
+                "window_end": metrics["cutoff"],
+                "metric_value": details["model_accuracy"],
+            })
         upsert(client, "metrics", metric_rows, "metric_id")
 
-    print(f"Experimento registrado: {RUN_ID}")
+    print(f"Experimento registrado: {run_id}")
     print(f"Modelos registrados: {len(models_by_name)}")
     print(f"Métricas registradas: {len(metric_rows)}")
 

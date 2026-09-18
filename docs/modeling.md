@@ -23,6 +23,10 @@ para evaluacion temporal. Las features se construyen solo con informacion
 disponible hasta cada instante: lags, medias moviles desplazadas, calendario,
 estacion, geografia y pronosticos de lluvia y temperatura.
 
+Cada experimento queda identificado por la version del dataset, el hash del
+dataset, el commit del codigo, la version de features y la version del modelo.
+Ademas de WAPE, se registra Accuracy como `100 * max(0, 1 - WAPE)`.
+
 ## Artefactos
 
 El entrenamiento escribe modelos locales en `artifacts/models/` y el resumen

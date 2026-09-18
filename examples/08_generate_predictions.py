@@ -24,13 +24,14 @@ add_features = _training.add_features
 
 
 EXPERIMENT_VERSION = "hgb-v1"
-RUN_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pulso-transmi:hgb-v1:2026-09-01"))
 FEATURE_SET_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pulso-transmi:features:hgb-v1"))
 
 
 def build_rows() -> list[dict[str, Any]]:
     data = Path("data")
     metrics = json.loads((Path("artifacts") / "model_metrics.json").read_text(encoding="utf-8"))
+    run_key = f"pulso-transmi:{EXPERIMENT_VERSION}:{metrics['dataset_version']}:{metrics['dataset_hash']}"
+    run_id = str(uuid.uuid5(uuid.NAMESPACE_URL, run_key))
     observations = pd.read_csv(data / "observations.csv", dtype={"station_id": "string"}, parse_dates=["observed_at"])
     context = pd.read_csv(data / "context.csv", parse_dates=["observed_at"])
     stations = pd.read_csv(data / "stations.csv", dtype={"station_id": "string"})
@@ -56,10 +57,10 @@ def build_rows() -> list[dict[str, Any]]:
             target_at = generated_timestamp + pd.Timedelta(value=int(horizon * 15), unit="m")
             station_id = str(frame.loc[index, "station_id"])
             model_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:model:{EXPERIMENT_VERSION}:{name}"))
-            prediction_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:prediction:{RUN_ID}:{station_id}:{target_at}:{horizon * 15}"))
+            prediction_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pulso-transmi:prediction:{run_id}:{station_id}:{target_at}:{horizon * 15}"))
             rows.append({
                 "prediction_id": prediction_id,
-                "run_id": RUN_ID,
+                "run_id": run_id,
                 "model_id": model_id,
                 "feature_set_id": FEATURE_SET_ID,
                 "station_id": station_id,

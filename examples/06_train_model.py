@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -51,8 +52,16 @@ def main() -> None:
     observations = pd.read_csv(data / "observations.csv", dtype={"station_id": "string"}, parse_dates=["observed_at"])
     context = pd.read_csv(data / "context.csv", parse_dates=["observed_at"])
     stations = pd.read_csv(data / "stations.csv", dtype={"station_id": "string"})
+    metadata = json.loads((data / "metadata.json").read_text(encoding="utf-8"))
+    dataset_hash = subprocess.check_output(
+        ["sha256sum", str(data / "observations.csv")], text=True
+    ).split()[0]
+    try:
+        code_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        code_commit = None
     frame = add_features(observations, context, stations)
-    cutoff = frame["observed_at"].max() - pd.Timedelta(days=7)
+    cutoff = frame["observed_at"].max() - pd.Timedelta(value=7, unit="D")
     categorical = pd.get_dummies(frame[["station_id", "corridor"]].astype("string"), dtype=float)
     numeric_names = [
         "local_hour", "day_of_week", "is_weekend", "hour_sin", "hour_cos", "dow_sin", "dow_cos",
@@ -62,6 +71,10 @@ def main() -> None:
     features = pd.concat([frame[numeric_names], categorical], axis=1)
     print("Resultados de validación temporal (últimos 7 días):")
     metrics: dict[str, object] = {
+        "dataset_version": metadata["dataset"],
+        "dataset_hash": dataset_hash,
+        "code_commit": code_commit,
+        "model_version": "hgb-v1",
         "cutoff": cutoff.isoformat(),
         "feature_names": features.columns.tolist(),
         "models": {},
@@ -90,7 +103,9 @@ def main() -> None:
         metrics["models"][name] = {
             "horizon_minutes": horizon * 15,
             "model_wape": model_wape,
+            "model_accuracy": max(0.0, 100 * (1 - model_wape)),
             "weekly_baseline_wape": baseline_wape,
+            "weekly_baseline_accuracy": max(0.0, 100 * (1 - baseline_wape)),
             "improvement": baseline_wape - model_wape,
             "artifact": str(model_path),
         }

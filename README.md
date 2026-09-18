@@ -157,6 +157,9 @@ modelos por horizonte. Consulta [docs/modeling.md](docs/modeling.md) para
 ejecutar la comparacion, entrenar los cuatro modelos y registrar sus metricas
 en Supabase.
 
+La politica para versionar datasets, codigo, features y modelos esta en
+[docs/experimentation.md](docs/experimentation.md).
+
 ## Métrica
 
 La referencia actual es:
