@@ -27,7 +27,20 @@ def get_client():
     return httpx.Client(base_url=API_URL, headers=headers, timeout=60)
 
 # ── DATA & FEATURES (Requeridos para Lags) ───────────────────────────────
+def download_starter_data(client):
+    """Download the starter CSV files (observations, context, stations)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for fname in ("stations.csv", "observations.csv", "context.csv"):
+        path = DATA_DIR / fname
+        if path.exists():
+            continue
+        resp = client.get(f"/v1/downloads/{fname}")
+        resp.raise_for_status()
+        path.write_bytes(resp.content)
+        print(f"  Descargado: {fname}")
+
 def download_stream_data(client):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     all_rows = []
     cursor = None
     while True:
@@ -158,6 +171,7 @@ def main():
         model_data = pickle.load(f)
 
     print(f"Ciclo encontrado: {cycle['cycle_id']}")
+    download_starter_data(client)
     download_stream_data(client)
     obs = load_all_observations()
     ctx = load_context()
