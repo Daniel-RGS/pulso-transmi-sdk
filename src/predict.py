@@ -176,6 +176,18 @@ def main():
     submit_resp = client.post("/v1/submissions", json=payload, headers={"Idempotency-Key": uuid.uuid4().hex})
     if submit_resp.status_code == 201:
         print(f"✅ Submission exitosa: {submit_resp.json()['submission_id']}")
+        
+        # Guardar predicciones localmente para el monitor.py
+        preds_df = pd.DataFrame(predictions)
+        preds_df["cycle_id"] = cycle["cycle_id"]
+        preds_df["predicted_at"] = datetime.now(timezone.utc).isoformat()
+        
+        preds_file = ARTIFACTS_DIR / "my_predictions.csv"
+        if not preds_file.exists():
+            preds_df.to_csv(preds_file, index=False)
+        else:
+            preds_df.to_csv(preds_file, mode="a", header=False, index=False)
+        print(f"✅ Predicciones guardadas localmente en {preds_file} para monitoreo.")
     else:
         print(f"❌ Error al enviar: {submit_resp.text}")
 
