@@ -40,3 +40,13 @@ Supabase funciona como registro operativo: conserva datos, ejecuciones, modelos,
 features, métricas y predicciones. Un dashboard puede consultar esas tablas
 para mostrar Accuracy por horizonte, última ejecución, modelo activo y evolución
 de las predicciones sin mezclar credenciales privadas en el navegador.
+
+El dashboard local se inicia con:
+
+```bash
+set -a && source .env && set +a
+.venv/bin/streamlit run dashboard.py
+```
+
+La clave de Supabase permanece en el proceso servidor de Streamlit; nunca se
+envía al navegador.
