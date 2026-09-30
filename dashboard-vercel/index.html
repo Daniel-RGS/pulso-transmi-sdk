@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulso TransMi | MLOps Dashboard</title>
+    <meta name="description" content="Dashboard en tiempo real para el monitoreo de modelos predictivos de Pulso TransMi.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <main class="dashboard-container">
+        <header>
+            <div class="logo">
+                <div class="pulse-ring"></div>
+                <h1>PULSO<span>TRANSMI</span></h1>
+            </div>
+            <div class="user-badge" id="user-badge">
+                <span class="status-dot"></span>
+                <span id="display-name">Cargando...</span>
+            </div>
+        </header>
+
+        <!-- Stats Overview -->
+        <section class="stats-grid">
+            <div class="stat-card glass">
+                <h3>Rank 24h</h3>
+                <div class="stat-value" id="val-rank">--</div>
+                <div class="stat-subtext">Compitiendo contra 32 estudiantes</div>
+            </div>
+            <div class="stat-card glass highlight">
+                <h3>Accuracy 24h</h3>
+                <div class="stat-value text-gradient" id="val-accuracy">--%</div>
+                <div class="stat-subtext">Precisión del modelo Campeón</div>
+            </div>
+            <div class="stat-card glass">
+                <h3>WAPE Error</h3>
+                <div class="stat-value" id="val-wape">--</div>
+                <div class="stat-subtext">Error Absoluto Medio</div>
+            </div>
+            <div class="stat-card glass">
+                <h3>Cobertura</h3>
+                <div class="stat-value" id="val-coverage">--%</div>
+                <div class="stat-subtext">Ciclos entregados hoy</div>
+            </div>
+        </section>
+
+        <!-- Leaderboard -->
+        <section class="leaderboard-section glass">
+            <div class="section-header">
+                <h2>Top 5 Global (Rolling 24h)</h2>
+                <div class="live-indicator">EN VIVO</div>
+            </div>
+            <div class="table-container">
+                <table id="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Estudiante</th>
+                            <th>Accuracy</th>
+                            <th>WAPE</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Inyectado vía JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        
+        <footer>
+            <p>Operado por Daniel Santiago Rincón Gamba • MLOps Pipeline Automático</p>
+        </footer>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
