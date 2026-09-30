@@ -19,12 +19,15 @@ API_KEY = os.getenv("PULSO_API_KEY")
 ARTIFACTS_DIR = Path("artifacts")
 DATA_DIR = Path("data")
 
+from httpx import Client, HTTPTransport
+
 def get_client():
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "User-Agent": "pulso-transmi-python/0.1.0",
     }
-    return httpx.Client(base_url=API_URL, headers=headers, timeout=60)
+    transport = HTTPTransport(retries=3)
+    return Client(base_url=API_URL, headers=headers, timeout=60, transport=transport)
 
 # ── DATA & FEATURES (Requeridos para Lags) ───────────────────────────────
 def download_starter_data(client):
@@ -43,19 +46,24 @@ def download_stream_data(client):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     all_rows = []
     cursor = None
-    while True:
-        params = {"limit": 5000}
-        if cursor: params["cursor"] = cursor
-        resp = client.get("/v1/stream/observations", params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        rows = data["data"]
-        all_rows.extend(rows)
-        cursor = data.get("next_cursor")
-        if not cursor: break
-    if all_rows:
-        df = pd.DataFrame(all_rows)
-        df.to_csv(DATA_DIR / "stream_observations.csv", index=False)
+    try:
+        while True:
+            params = {"limit": 5000}
+            if cursor: params["cursor"] = cursor
+            resp = client.get("/v1/stream/observations", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            rows = data["data"]
+            all_rows.extend(rows)
+            cursor = data.get("next_cursor")
+            if not cursor: break
+        if all_rows:
+            df = pd.DataFrame(all_rows)
+            df.to_csv(DATA_DIR / "stream_observations.csv", index=False)
+            print(f"  Stream actualizado: {len(df)} filas.")
+    except Exception as e:
+        print(f"⚠️ Alerta: Falló la descarga de stream observations ({e}).")
+        print("Continuaremos usando los datos base para asegurar la entrega del ciclo.")
     return all_rows
 
 def load_all_observations():
