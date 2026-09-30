@@ -1,8 +1,6 @@
-const API_URL = "https://pulso-transmi.72-60-245-2.sslip.io";
-
 async function fetchLeaderboard() {
     try {
-        const response = await fetch(`${API_URL}/v1/leaderboard?window=rolling_24h`);
+        const response = await fetch(`/api/leaderboard`);
         if (!response.ok) throw new Error("API error");
         const data = await response.json();
         
