@@ -35,9 +35,6 @@ function startExperience() {
         // Cargar datos del leaderboard
         fetchLeaderboard();
         setInterval(fetchLeaderboard, 30000);
-
-        // Arrancar el colado Easter egg
-        scheduleColado();
     }, 3300);
 }
 
@@ -96,57 +93,5 @@ function createRow(student, rank) {
     return tr;
 }
 
-/* ═══════════════════════════════════════════════════════
-   EL COLADO — Easter egg (aparece cada ~45 segundos)
-══════════════════════════════════════════════════════ */
-const FRASES_COLADO = [
-    '¡Sin pagar! 😂',
-    '¡Pasaje qué! 🏃',
-    '¡Ciencias de Datos! 🧠',
-    '¡Externado rules! 💚',
-    '¡A mí no me cobran! 😎',
-    '¡Modelo random forest! 🌲',
-];
 
-function lanzarColado() {
-    const scene   = document.getElementById('colado-scene');
-    const student = document.getElementById('colado-student');
-    const bubble  = document.getElementById('colado-bubble');
-    if (!scene || student.classList.contains('running')) return;
-
-    // Frase aleatoria
-    bubble.textContent = FRASES_COLADO[Math.floor(Math.random() * FRASES_COLADO.length)];
-
-    // Reset posición del estudiante (por si ya corrió antes)
-    student.classList.remove('running');
-    void student.offsetWidth; // force reflow
-
-    // Mostrar escena
-    scene.classList.remove('hidden');
-
-    // Arrancar la carrera
-    student.classList.add('running');
-
-    // Mostrar globo justo cuando llega al centro (~42% de 5s = ~2.1s)
-    setTimeout(() => bubble.classList.add('visible'), 2100);
-    // Ocultar globo cuando sale (~60% = ~3s)
-    setTimeout(() => bubble.classList.remove('visible'), 3100);
-
-    // Limpiar todo al final
-    setTimeout(() => {
-        scene.classList.add('hidden');
-        student.classList.remove('running');
-    }, 5200);
-}
-
-// Primera aparición 20s después de entrar al dashboard,
-// luego cada 50 segundos (con algo de aleatoriedad para sorprender)
-function scheduleColado() {
-    const delay = 20000 + Math.random() * 10000; // 20-30s primera vez
-    setTimeout(() => {
-        lanzarColado();
-        // repetir cada 45-60s
-        setInterval(() => lanzarColado(), 45000 + Math.random() * 15000);
-    }, delay);
-}
 
