@@ -126,9 +126,9 @@ def train_models(df: pd.DataFrame) -> dict:
         cutoff = max(100, int(len(train_data) * 0.4))
         train_data = train_data.tail(cutoff)
         
-        # --- ESTRATEGIA ALLISON (NORMALIZACIÓN GLOBAL) ---
-        # En vez de predecir demanda absoluta, predecimos el % respecto al promedio reciente (rolling_mean_96)
-        s = train_data["rolling_mean_96"].fillna(1.0)
+        # --- ESTRATEGIA ALLISON MEJORADA (NORMALIZACIÓN INMEDIATA) ---
+        # En vez de predecir demanda absoluta, predecimos el % respecto al último paso (lag_1)
+        s = train_data["lag_1"].fillna(1.0)
         s = np.maximum(s, 1.0).values
         
         X = train_data[available_features].values

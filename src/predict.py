@@ -148,9 +148,9 @@ def predict_for_cycle(cycle: dict, obs: pd.DataFrame, ctx: pd.DataFrame, model_d
             last_row["adaptive_profile"] = same_slot["adaptive_profile"].iloc[-1]
             last_row["lag_672"] = same_slot["demand"].iloc[-1]
 
-        # --- ESTRATEGIA ALLISON (DES-NORMALIZACIÓN) ---
-        # El modelo predice un porcentaje, así que multiplicamos por la escala reciente
-        s = float(last_row.get("rolling_mean_96", 1.0))
+        # --- ESTRATEGIA ALLISON MEJORADA (DES-NORMALIZACIÓN INMEDIATA) ---
+        # El modelo predice un porcentaje respecto al paso anterior, así que multiplicamos por lag_1
+        s = float(last_row.get("lag_1", 1.0))
         if pd.isna(s) or s < 1.0:
             s = 1.0
 
