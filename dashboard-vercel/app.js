@@ -25,27 +25,13 @@ async function fetchLeaderboard() {
             document.getElementById("val-coverage").textContent = `${(myData.coverage * 100).toFixed(1)}%`;
         }
 
-        // Render Table (Top 5 + Daniel if not in top 5)
+        // Render Table (All students)
         const tbody = document.querySelector("#leaderboard-table tbody");
         tbody.innerHTML = "";
         
-        const top5 = students.slice(0, 5);
-        let danielInTop5 = false;
-        
-        top5.forEach((student, index) => {
-            if (student.display_name.includes("Daniel Santiago Rincon")) danielInTop5 = true;
-            tbody.appendChild(createRow(student, index + 1));
+        students.forEach((student, index) => {
+            tbody.appendChild(createRow(student, index + 1, student.display_name.includes("Daniel Santiago Rincon")));
         });
-        
-        if (myData && !danielInTop5) {
-            // Add separator
-            const sep = document.createElement("tr");
-            sep.innerHTML = `<td colspan="5" style="text-align: center; color: #94a3b8;">...</td>`;
-            tbody.appendChild(sep);
-            
-            // Add Daniel
-            tbody.appendChild(createRow(myData, myData.rank, true));
-        }
         
     } catch (error) {
         console.error("Error fetching leaderboard:", error);
