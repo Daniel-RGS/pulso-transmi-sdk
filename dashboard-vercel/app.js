@@ -35,6 +35,9 @@ function startExperience() {
         // Cargar datos del leaderboard
         fetchLeaderboard();
         setInterval(fetchLeaderboard, 30000);
+
+        // Arrancar el colado Easter egg
+        scheduleColado();
     }, 3300);
 }
 
@@ -92,3 +95,48 @@ function createRow(student, rank) {
     `;
     return tr;
 }
+
+/* ═══════════════════════════════════════════════════════
+   EL COLADO — Easter egg (aparece cada ~45 segundos)
+══════════════════════════════════════════════════════ */
+const FRASES_COLADO = [
+    '¡Sin pagar! 😂',
+    '¡Pasaje qué! 🏃',
+    '¡Ciencias de Datos! 🧠',
+    '¡Externado rules! 💚',
+    '¡A mí no me cobran! 😎',
+    '¡Modelo random forest! 🌲',
+];
+
+function lanzarColado() {
+    const container = document.getElementById('colado-container');
+    const bubble    = document.getElementById('colado-bubble');
+    if (!container || container.classList.contains('running')) return;
+
+    // Frase aleatoria
+    bubble.textContent = FRASES_COLADO[Math.floor(Math.random() * FRASES_COLADO.length)];
+
+    // Mostrar y arrancar
+    container.classList.remove('hidden');
+    // Forzar reflow para que la animación se reinicie
+    void container.offsetWidth;
+    container.classList.add('running');
+
+    // Después de 4.5s reset
+    setTimeout(() => {
+        container.classList.remove('running');
+        container.classList.add('hidden');
+    }, 4600);
+}
+
+// Primera aparición 20s después de entrar al dashboard,
+// luego cada 50 segundos (con algo de aleatoriedad para sorprender)
+function scheduleColado() {
+    const delay = 20000 + Math.random() * 10000; // 20-30s primera vez
+    setTimeout(() => {
+        lanzarColado();
+        // repetir cada 45-60s
+        setInterval(() => lanzarColado(), 45000 + Math.random() * 15000);
+    }, delay);
+}
+
