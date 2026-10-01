@@ -96,7 +96,7 @@ def build_features(obs: pd.DataFrame, ctx: pd.DataFrame) -> pd.DataFrame:
     for window in [4, 12, 96]:
         df[f"rolling_mean_{window}"] = df.groupby("station_id")["demand"].transform(lambda x: x.shift(1).rolling(window, min_periods=1).mean())
     df["profile_key"] = df["station_id"] + "_" + df["dow"].astype(str) + "_" + df["time_slot"].astype(str)
-    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=1344, min_periods=1).mean())
+    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=48, min_periods=1).mean())
     ctx_cols = ["observed_at", "temperature_c", "rain_mm", "event_intensity"]
     available_cols = [c for c in ctx_cols if c in ctx.columns]
     if len(available_cols) > 1:
@@ -118,13 +118,18 @@ def train_models(df: pd.DataFrame) -> dict:
     available_features = [c for c in FEATURE_COLS if c in df.columns]
     for station_id, group in df.groupby("station_id"):
         train_data = group.dropna(subset=["demand"] + available_features)
-        if len(train_data) < 100:
+        if len(train_data) < 50:
             print(f"  Estación {station_id}: pocos datos ({len(train_data)}), skip")
             continue
+        # Solo usar el último 30% de datos para priorizar datos post-Drift
+        cutoff = max(50, int(len(train_data) * 0.3))
+        train_data = train_data.tail(cutoff)
         X = train_data[available_features].values
         y = train_data["demand"].values
-        model = HistGradientBoostingRegressor(max_iter=300, max_depth=6, learning_rate=0.05, min_samples_leaf=20, random_state=42)
-        model.fit(X, y)
+        # Dar más peso a las filas más recientes
+        weights = np.linspace(0.3, 1.0, len(y))
+        model = HistGradientBoostingRegressor(max_iter=500, max_depth=8, learning_rate=0.08, min_samples_leaf=10, random_state=42)
+        model.fit(X, y, sample_weight=weights)
         models[station_id] = model
         print(f"  Estación {station_id}: entrenado con {len(train_data)} filas")
     
