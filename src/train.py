@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 import httpx
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, VotingRegressor
+from xgboost import XGBRegressor
 
 # ── Config ──────────────────────────────────────────────────────────────────
 API_URL = os.getenv("PULSO_API_URL", "https://pulso-transmi.72-60-245-2.sslip.io")
@@ -121,15 +122,33 @@ def train_models(df: pd.DataFrame) -> dict:
         if len(train_data) < 50:
             print(f"  Estación {station_id}: pocos datos ({len(train_data)}), skip")
             continue
-        # Solo usar el último 30% de datos para priorizar datos post-Drift
-        cutoff = max(50, int(len(train_data) * 0.3))
+        # Solo usar el último 40% de datos para priorizar datos post-Drift
+        cutoff = max(100, int(len(train_data) * 0.4))
         train_data = train_data.tail(cutoff)
+        
+        # --- ESTRATEGIA ALLISON (NORMALIZACIÓN GLOBAL) ---
+        # En vez de predecir demanda absoluta, predecimos el % respecto al promedio reciente (rolling_mean_96)
+        s = train_data["rolling_mean_96"].fillna(1.0)
+        s = np.maximum(s, 1.0).values
+        
         X = train_data[available_features].values
-        y = train_data["demand"].values
-        # Dar más peso a las filas más recientes
-        weights = np.linspace(0.3, 1.0, len(y))
-        model = HistGradientBoostingRegressor(max_iter=500, max_depth=8, learning_rate=0.08, min_samples_leaf=10, random_state=42)
-        model.fit(X, y, sample_weight=weights)
+        y_raw = train_data["demand"].values
+        y_norm = y_raw / s
+        
+        # Para mantener la métrica WAPE, pesamos por la escala 's' y le damos más peso a lo reciente
+        time_weights = np.linspace(0.5, 1.0, len(y_norm))
+        final_weights = time_weights * s
+        
+        # --- ESTRATEGIA KEVIN/ALEJANDRO (ENSAMBLE VOTING) ---
+        model_hgb = HistGradientBoostingRegressor(max_iter=300, max_depth=7, learning_rate=0.06, random_state=42)
+        model_xgb = XGBRegressor(n_estimators=300, max_depth=7, learning_rate=0.06, random_state=42, tree_method="hist")
+        
+        model = VotingRegressor(estimators=[
+            ("hgb", model_hgb),
+            ("xgb", model_xgb)
+        ])
+        
+        model.fit(X, y_norm, sample_weight=final_weights)
         models[station_id] = model
         print(f"  Estación {station_id}: entrenado con {len(train_data)} filas")
     

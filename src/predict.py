@@ -148,8 +148,15 @@ def predict_for_cycle(cycle: dict, obs: pd.DataFrame, ctx: pd.DataFrame, model_d
             last_row["adaptive_profile"] = same_slot["adaptive_profile"].iloc[-1]
             last_row["lag_672"] = same_slot["demand"].iloc[-1]
 
+        # --- ESTRATEGIA ALLISON (DES-NORMALIZACIÓN) ---
+        # El modelo predice un porcentaje, así que multiplicamos por la escala reciente
+        s = float(last_row.get("rolling_mean_96", 1.0))
+        if pd.isna(s) or s < 1.0:
+            s = 1.0
+
         feat_values = [float(last_row.get(col, 0) if pd.notna(last_row.get(col, 0)) else 0) for col in feat_cols]
-        pred_value = max(0, model.predict(np.array([feat_values]))[0])
+        pred_norm = max(0, model.predict(np.array([feat_values]))[0])
+        pred_value = pred_norm * s
         predictions.append({"station_id": station_id, "target_at": target["target_at"], "value": round(pred_value, 2)})
 
     return predictions
