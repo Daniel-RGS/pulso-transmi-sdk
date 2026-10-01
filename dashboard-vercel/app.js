@@ -1,66 +1,94 @@
+/* ═══════════════════════════════════════════════════════
+   CUSTOM CURSOR
+══════════════════════════════════════════════════════ */
+const cursor = document.getElementById('custom-cursor');
+
+document.addEventListener('mousemove', e => {
+    cursor.style.left = e.clientX + 'px';
+    cursor.style.top  = e.clientY + 'px';
+});
+document.addEventListener('mousedown', () => cursor.classList.add('clicked'));
+document.addEventListener('mouseup',   () => cursor.classList.remove('clicked'));
+
+/* ═══════════════════════════════════════════════════════
+   INTRO → BUS → DASHBOARD
+══════════════════════════════════════════════════════ */
+function startExperience() {
+    const btn      = document.getElementById('btn-iniciar');
+    const busScene = document.getElementById('bus-scene');
+    const intro    = document.getElementById('intro-screen');
+    const dash     = document.getElementById('dashboard');
+
+    // Ocultar botón y mostrar escena del bus
+    btn.style.display = 'none';
+    busScene.classList.remove('hidden');
+
+    // Cuando el bus termina su animación (3.2s) → mostrar dashboard
+    setTimeout(() => {
+        intro.classList.add('fade-out');
+        dash.classList.remove('hidden');
+        dash.classList.add('show');
+
+        // Habilitar scroll del body
+        document.body.style.overflow = 'auto';
+
+        // Cargar datos del leaderboard
+        fetchLeaderboard();
+        setInterval(fetchLeaderboard, 30000);
+    }, 3300);
+}
+
+/* ═══════════════════════════════════════════════════════
+   LEADERBOARD
+══════════════════════════════════════════════════════ */
 async function fetchLeaderboard() {
     try {
-        const response = await fetch(`/api/leaderboard`);
-        if (!response.ok) throw new Error("API error");
+        const response = await fetch('/api/leaderboard');
+        if (!response.ok) throw new Error('API error');
         const data = await response.json();
-        
         const students = data.data;
-        let myData = null;
-        
-        // Find Daniel
-        for (let i = 0; i < students.length; i++) {
-            if (students[i].display_name.includes("Daniel Santiago Rincon")) {
-                myData = students[i];
-                break;
-            }
-        }
-        
+
+        // Buscar a Daniel
+        let myData = students.find(s => s.display_name.includes('Daniel Santiago Rincon'));
+
         if (myData) {
-            document.getElementById("display-name").textContent = myData.display_name;
-            document.getElementById("val-rank").textContent = `#${myData.rank}`;
-            
-            // Format Accuracy (animate counter if possible, for now just innerHTML)
-            document.getElementById("val-accuracy").textContent = `${myData.accuracy.toFixed(2)}%`;
-            document.getElementById("val-wape").textContent = myData.raw_wape.toFixed(4);
-            document.getElementById("val-coverage").textContent = `${(myData.coverage * 100).toFixed(1)}%`;
+            document.getElementById('display-name').textContent = myData.display_name;
+            document.getElementById('val-rank').textContent     = `#${myData.rank}`;
+            document.getElementById('val-accuracy').textContent = `${myData.accuracy.toFixed(2)}%`;
+            document.getElementById('val-wape').textContent     = myData.raw_wape.toFixed(4);
+            document.getElementById('val-coverage').textContent = `${(myData.coverage * 100).toFixed(1)}%`;
         }
 
-        // Render Table (All students)
-        const tbody = document.querySelector("#leaderboard-table tbody");
-        tbody.innerHTML = "";
-        
+        // Renderizar todos los estudiantes
+        const tbody = document.querySelector('#leaderboard-table tbody');
+        tbody.innerHTML = '';
         students.forEach((student, index) => {
-            tbody.appendChild(createRow(student, index + 1, student.display_name.includes("Daniel Santiago Rincon")));
+            tbody.appendChild(createRow(student, index + 1));
         });
-        
+
     } catch (error) {
-        console.error("Error fetching leaderboard:", error);
+        console.error('Error fetching leaderboard:', error);
     }
 }
 
-function createRow(student, rank, isDaniel = false) {
-    const tr = document.createElement("tr");
-    
-    // Classes for styling
+function createRow(student, rank) {
+    const tr = document.createElement('tr');
+
     if (rank <= 3) tr.className = `top-${rank}`;
-    if (isDaniel || student.display_name.includes("Daniel Santiago Rincon")) {
-        tr.classList.add("daniel-row");
+    if (student.display_name.includes('Daniel Santiago Rincon')) {
+        tr.classList.add('daniel-row');
     }
-    
+
+    const isActive = student.coverage > 0;
+    const statusColor = isActive ? '#cc0000' : '#555';
+    const statusText  = isActive ? '● Activo'  : '○ Inactivo';
+
     tr.innerHTML = `
         <td><span class="rank-badge">${rank}</span></td>
         <td>${student.display_name}</td>
-        <td>${student.accuracy.toFixed(2)}%</td>
+        <td><strong>${student.accuracy.toFixed(2)}%</strong></td>
         <td>${student.raw_wape.toFixed(4)}</td>
-        <td><span style="color: ${student.coverage > 0 ? '#10b981' : '#ef4444'}">
-            ${student.coverage > 0 ? 'Activo' : 'Inactivo'}
-        </span></td>
+        <td style="color:${statusColor}; font-weight:700">${statusText}</td>
     `;
     return tr;
 }
-
-// Initial fetch
-fetchLeaderboard();
-
-// Refresh every 30 seconds
-setInterval(fetchLeaderboard, 30000);

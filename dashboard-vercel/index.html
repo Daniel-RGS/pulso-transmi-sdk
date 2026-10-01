@@ -7,75 +7,168 @@
     <meta name="description" content="Dashboard en tiempo real para el monitoreo de modelos predictivos de Pulso TransMi.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="glass-bg"></div>
-    <main class="dashboard-container">
-        <header>
-            <div class="logo">
-                <div class="pulse-ring"></div>
-                <h1>PULSO<span>TRANSMI</span></h1>
-            </div>
-            <div class="user-badge" id="user-badge">
-                <span class="status-dot"></span>
-                <span id="display-name">Cargando...</span>
-            </div>
-        </header>
 
-        <!-- Stats Overview -->
-        <section class="stats-grid">
-            <div class="stat-card glass">
-                <h3>Rank 24h</h3>
-                <div class="stat-value" id="val-rank">--</div>
-                <div class="stat-subtext">Compitiendo contra 32 estudiantes</div>
-            </div>
-            <div class="stat-card glass highlight">
-                <h3>Accuracy 24h</h3>
-                <div class="stat-value text-gradient" id="val-accuracy">--%</div>
-                <div class="stat-subtext">Precisión del modelo Campeón</div>
-            </div>
-            <div class="stat-card glass">
-                <h3>WAPE Error</h3>
-                <div class="stat-value" id="val-wape">--</div>
-                <div class="stat-subtext">Error Absoluto Medio</div>
-            </div>
-            <div class="stat-card glass">
-                <h3>Cobertura</h3>
-                <div class="stat-value" id="val-coverage">--%</div>
-                <div class="stat-subtext">Ciclos entregados hoy</div>
-            </div>
-        </section>
+    <!-- ═══════════════════════════════════════════════════════
+         CUSTOM CURSOR — letra T de TransMilenio
+    ══════════════════════════════════════════════════════════ -->
+    <div id="custom-cursor">T</div>
 
-        <!-- Leaderboard -->
-        <section class="leaderboard-section glass">
-            <div class="section-header">
-                <h2>Top 5 Global (Rolling 24h)</h2>
-                <div class="live-indicator">EN VIVO</div>
+    <!-- ═══════════════════════════════════════════════════════
+         INTRO SCREEN
+    ══════════════════════════════════════════════════════════ -->
+    <div id="intro-screen">
+        <!-- Mural de fondo -->
+        <div class="intro-mural"></div>
+        <div class="intro-overlay"></div>
+
+        <!-- Contenido central -->
+        <div class="intro-content">
+            <!-- Logo T -->
+            <div class="intro-logo">
+                <div class="transmi-T">T</div>
             </div>
-            <div class="table-container">
-                <table id="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Estudiante</th>
-                            <th>Accuracy</th>
-                            <th>WAPE</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Inyectado vía JS -->
-                    </tbody>
-                </table>
+
+            <p class="intro-eyebrow">SISTEMA INTEGRADO DE TRANSPORTE</p>
+            <h1 class="intro-title">Pulso <span>TransMi</span></h1>
+            <p class="intro-subtitle">Competencia de Modelos Predictivos · MLOps 2026</p>
+
+            <button id="btn-iniciar" onclick="startExperience()">
+                <span class="btn-icon">▶</span>
+                INICIAR EXPERIENCIA
+            </button>
+        </div>
+
+        <!-- Bus animado — aparece al hacer clic -->
+        <div id="bus-scene" class="hidden">
+            <div id="bus-track"></div>
+            <div id="bus">
+                <!-- Cuerpo del bus L25 (SVG inline) -->
+                <svg viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Sombra -->
+                    <ellipse cx="210" cy="115" rx="180" ry="8" fill="rgba(0,0,0,0.4)"/>
+                    <!-- Carrocería principal -->
+                    <rect x="10" y="20" width="400" height="80" rx="10" fill="#CC0000"/>
+                    <!-- Franja gris lateral -->
+                    <rect x="10" y="55" width="400" height="18" fill="#888888"/>
+                    <!-- Ventanas -->
+                    <rect x="30" y="28" width="50" height="28" rx="4" fill="#1a1a2e" opacity="0.85"/>
+                    <rect x="95" y="28" width="50" height="28" rx="4" fill="#1a1a2e" opacity="0.85"/>
+                    <rect x="160" y="28" width="50" height="28" rx="4" fill="#1a1a2e" opacity="0.85"/>
+                    <rect x="225" y="28" width="50" height="28" rx="4" fill="#1a1a2e" opacity="0.85"/>
+                    <rect x="290" y="28" width="50" height="28" rx="4" fill="#1a1a2e" opacity="0.85"/>
+                    <rect x="355" y="28" width="45" height="28" rx="4" fill="#1a1a2e" opacity="0.85"/>
+                    <!-- Puertas -->
+                    <rect x="110" y="55" width="30" height="44" rx="3" fill="#AA0000"/>
+                    <rect x="270" y="55" width="30" height="44" rx="3" fill="#AA0000"/>
+                    <!-- Frente del bus (izq) -->
+                    <rect x="0" y="20" width="30" height="80" rx="10" fill="#B30000"/>
+                    <!-- Faro delantero -->
+                    <circle cx="15" cy="85" r="10" fill="#FFEE00" opacity="0.9"/>
+                    <circle cx="15" cy="85" r="6" fill="#FFFFFF"/>
+                    <!-- Letrero ruta -->
+                    <rect x="20" y="22" width="80" height="22" rx="4" fill="#111111"/>
+                    <text x="60" y="37" text-anchor="middle" fill="#FFCC00" font-size="12" font-weight="bold" font-family="Arial">L25</text>
+                    <!-- Logo T -->
+                    <circle cx="370" cy="42" r="14" fill="white"/>
+                    <text x="370" y="47" text-anchor="middle" fill="#CC0000" font-size="16" font-weight="900" font-family="Arial">T</text>
+                    <!-- Ruedas -->
+                    <circle cx="80" cy="100" r="18" fill="#222"/>
+                    <circle cx="80" cy="100" r="10" fill="#444"/>
+                    <circle cx="80" cy="100" r="4" fill="#888"/>
+                    <circle cx="330" cy="100" r="18" fill="#222"/>
+                    <circle cx="330" cy="100" r="10" fill="#444"/>
+                    <circle cx="330" cy="100" r="4" fill="#888"/>
+                </svg>
+                <!-- Humo de escape -->
+                <div class="exhaust">
+                    <span></span><span></span><span></span>
+                </div>
             </div>
-        </section>
-        
-        <footer>
-            <p>Operado por Daniel Santiago Rincón Gamba • MLOps Pipeline Automático</p>
-        </footer>
-    </main>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MAIN DASHBOARD (oculto hasta que el bus pase)
+    ══════════════════════════════════════════════════════════ -->
+    <div id="dashboard" class="hidden">
+        <!-- Mural fondo dashboard -->
+        <div class="dash-mural"></div>
+        <div class="dash-overlay"></div>
+
+        <main class="dashboard-container">
+            <header>
+                <div class="logo">
+                    <div class="transmi-badge">T</div>
+                    <div>
+                        <h1>PULSO<span>TRANSMI</span></h1>
+                        <p class="logo-sub">MLOps · Ranking en Vivo</p>
+                    </div>
+                </div>
+                <div class="user-badge" id="user-badge">
+                    <span class="status-dot"></span>
+                    <span id="display-name">Cargando...</span>
+                </div>
+            </header>
+
+            <!-- Stats Overview -->
+            <section class="stats-grid">
+                <div class="stat-card glass">
+                    <h3>🏆 Rank 24h</h3>
+                    <div class="stat-value" id="val-rank">--</div>
+                    <div class="stat-subtext">Entre todos los estudiantes</div>
+                </div>
+                <div class="stat-card glass highlight">
+                    <h3>🎯 Accuracy 24h</h3>
+                    <div class="stat-value text-gradient" id="val-accuracy">--%</div>
+                    <div class="stat-subtext">Precisión del modelo Campeón</div>
+                </div>
+                <div class="stat-card glass">
+                    <h3>📉 WAPE Error</h3>
+                    <div class="stat-value" id="val-wape">--</div>
+                    <div class="stat-subtext">Error Absoluto Ponderado</div>
+                </div>
+                <div class="stat-card glass">
+                    <h3>📡 Cobertura</h3>
+                    <div class="stat-value" id="val-coverage">--%</div>
+                    <div class="stat-subtext">Ciclos entregados hoy</div>
+                </div>
+            </section>
+
+            <!-- Leaderboard -->
+            <section class="leaderboard-section glass">
+                <div class="section-header">
+                    <h2>Ranking Global · Rolling 24h</h2>
+                    <div class="live-indicator">
+                        <span class="live-dot"></span>EN VIVO
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Estudiante</th>
+                                <th>Accuracy</th>
+                                <th>WAPE</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Inyectado vía JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <footer>
+                <p>Operado por Daniel Santiago Rincón Gamba · MLOps Pipeline Automático · Actualiza cada 30s</p>
+            </footer>
+        </main>
+    </div>
 
     <script src="app.js"></script>
 </body>
