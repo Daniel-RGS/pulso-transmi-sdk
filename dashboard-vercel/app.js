@@ -109,24 +109,34 @@ const FRASES_COLADO = [
 ];
 
 function lanzarColado() {
-    const container = document.getElementById('colado-container');
-    const bubble    = document.getElementById('colado-bubble');
-    if (!container || container.classList.contains('running')) return;
+    const scene   = document.getElementById('colado-scene');
+    const student = document.getElementById('colado-student');
+    const bubble  = document.getElementById('colado-bubble');
+    if (!scene || student.classList.contains('running')) return;
 
     // Frase aleatoria
     bubble.textContent = FRASES_COLADO[Math.floor(Math.random() * FRASES_COLADO.length)];
 
-    // Mostrar y arrancar
-    container.classList.remove('hidden');
-    // Forzar reflow para que la animación se reinicie
-    void container.offsetWidth;
-    container.classList.add('running');
+    // Reset posición del estudiante (por si ya corrió antes)
+    student.classList.remove('running');
+    void student.offsetWidth; // force reflow
 
-    // Después de 4.5s reset
+    // Mostrar escena
+    scene.classList.remove('hidden');
+
+    // Arrancar la carrera
+    student.classList.add('running');
+
+    // Mostrar globo justo cuando llega al centro (~42% de 5s = ~2.1s)
+    setTimeout(() => bubble.classList.add('visible'), 2100);
+    // Ocultar globo cuando sale (~60% = ~3s)
+    setTimeout(() => bubble.classList.remove('visible'), 3100);
+
+    // Limpiar todo al final
     setTimeout(() => {
-        container.classList.remove('running');
-        container.classList.add('hidden');
-    }, 4600);
+        scene.classList.add('hidden');
+        student.classList.remove('running');
+    }, 5200);
 }
 
 // Primera aparición 20s después de entrar al dashboard,
