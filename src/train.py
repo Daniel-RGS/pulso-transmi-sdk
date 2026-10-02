@@ -97,7 +97,20 @@ def build_features(obs: pd.DataFrame, ctx: pd.DataFrame) -> pd.DataFrame:
     for window in [4, 12, 96]:
         df[f"rolling_mean_{window}"] = df.groupby("station_id")["demand"].transform(lambda x: x.shift(1).rolling(window, min_periods=1).mean())
     df["profile_key"] = df["station_id"] + "_" + df["dow"].astype(str) + "_" + df["time_slot"].astype(str)
-    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=48, min_periods=1).mean())
+    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=4, min_periods=1).mean())
+    
+    # NEW DRIFT LOGIC
+    df["base_shape"] = df["adaptive_profile"].fillna(df["lag_672"]).fillna(df["rolling_mean_96"]).fillna(1.0)
+    df["base_shape"] = np.maximum(df["base_shape"], 1.0)
+    
+    df["raw_drift_ratio"] = df["demand"] / df["base_shape"]
+    def get_drift(x):
+        return x.shift(1).rolling(4, min_periods=1).median()
+    df["drift_multiplier"] = df.groupby("station_id")["raw_drift_ratio"].transform(get_drift).fillna(1.0)
+    
+    df["s_scale"] = df["base_shape"] * df["drift_multiplier"]
+    df["s_scale"] = np.maximum(df["s_scale"], 1.0)
+
     ctx_cols = ["observed_at", "temperature_c", "rain_mm", "event_intensity"]
     available_cols = [c for c in ctx_cols if c in ctx.columns]
     if len(available_cols) > 1:
@@ -109,7 +122,7 @@ FEATURE_COLS = [
     "hour_sin", "hour_cos", "dow_sin", "dow_cos",
     "lag_1", "lag_2", "lag_3", "lag_4", "lag_96", "lag_672",
     "rolling_mean_4", "rolling_mean_12", "rolling_mean_96",
-    "adaptive_profile", "temperature_c", "rain_mm", "event_intensity",
+    "adaptive_profile", "drift_multiplier", "temperature_c", "rain_mm", "event_intensity",
 ]
 
 # ── TRAINING ────────────────────────────────────────────────────────────
@@ -126,10 +139,9 @@ def train_models(df: pd.DataFrame) -> dict:
         cutoff = max(100, int(len(train_data) * 0.4))
         train_data = train_data.tail(cutoff)
         
-        # --- ESTRATEGIA ALLISON MEJORADA (NORMALIZACIÓN INMEDIATA) ---
-        # En vez de predecir demanda absoluta, predecimos el % respecto al último paso (lag_1)
-        s = train_data["lag_1"].fillna(1.0)
-        s = np.maximum(s, 1.0).values
+        # --- ESTRATEGIA ALLISON MEJORADA (NORMALIZACIÓN DE DRIFT PURA) ---
+        # Separamos el perfil base y el multiplicador de drift actual
+        s = train_data["s_scale"].values
         
         X = train_data[available_features].values
         y_raw = train_data["demand"].values

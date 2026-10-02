@@ -100,7 +100,20 @@ def build_features(obs: pd.DataFrame, ctx: pd.DataFrame) -> pd.DataFrame:
     for window in [4, 12, 96]:
         df[f"rolling_mean_{window}"] = df.groupby("station_id")["demand"].transform(lambda x: x.shift(1).rolling(window, min_periods=1).mean())
     df["profile_key"] = df["station_id"] + "_" + df["dow"].astype(str) + "_" + df["time_slot"].astype(str)
-    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=1344, min_periods=1).mean())
+    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=4, min_periods=1).mean())
+    
+    # NEW DRIFT LOGIC
+    df["base_shape"] = df["adaptive_profile"].fillna(df["lag_672"]).fillna(df["rolling_mean_96"]).fillna(1.0)
+    df["base_shape"] = np.maximum(df["base_shape"], 1.0)
+    
+    df["raw_drift_ratio"] = df["demand"] / df["base_shape"]
+    def get_drift(x):
+        return x.shift(1).rolling(4, min_periods=1).median()
+    df["drift_multiplier"] = df.groupby("station_id")["raw_drift_ratio"].transform(get_drift).fillna(1.0)
+    
+    df["s_scale"] = df["base_shape"] * df["drift_multiplier"]
+    df["s_scale"] = np.maximum(df["s_scale"], 1.0)
+
     ctx_cols = ["observed_at", "temperature_c", "rain_mm", "event_intensity"]
     available_cols = [c for c in ctx_cols if c in ctx.columns]
     if len(available_cols) > 1: df = df.merge(ctx[available_cols], on="observed_at", how="left")
@@ -148,11 +161,17 @@ def predict_for_cycle(cycle: dict, obs: pd.DataFrame, ctx: pd.DataFrame, model_d
             last_row["adaptive_profile"] = same_slot["adaptive_profile"].iloc[-1]
             last_row["lag_672"] = same_slot["demand"].iloc[-1]
 
-        # --- ESTRATEGIA ALLISON MEJORADA (DES-NORMALIZACIÓN INMEDIATA) ---
-        # El modelo predice un porcentaje respecto al paso anterior, así que multiplicamos por lag_1
-        s = float(last_row.get("lag_1", 1.0))
-        if pd.isna(s) or s < 1.0:
-            s = 1.0
+        # --- ESTRATEGIA ALLISON MEJORADA (DES-NORMALIZACIÓN DE DRIFT PURA) ---
+        base_shape = last_row.get("adaptive_profile")
+        if pd.isna(base_shape): base_shape = last_row.get("lag_672", 1.0)
+        if pd.isna(base_shape): base_shape = last_row.get("rolling_mean_96", 1.0)
+        base_shape = max(base_shape, 1.0)
+        
+        drift_mult = float(last_row.get("drift_multiplier", 1.0))
+        if pd.isna(drift_mult): drift_mult = 1.0
+        
+        s = base_shape * drift_mult
+        s = max(s, 1.0)
 
         feat_values = [float(last_row.get(col, 0) if pd.notna(last_row.get(col, 0)) else 0) for col in feat_cols]
         pred_norm = max(0, model.predict(np.array([feat_values]))[0])
