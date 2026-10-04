@@ -73,6 +73,19 @@ def load_all_observations():
         stream = pd.read_csv(stream_path, dtype={"station_id": "string"})
         stream["observed_at"] = pd.to_datetime(stream["observed_at"], utc=True)
         if "released_at" in stream.columns: stream = stream.drop(columns=["released_at"])
+        
+        # COMPATIBILIDAD CON SCHEMA V2.0
+        if "measurement" in stream.columns:
+            import ast
+            def parse_demand(row):
+                if pd.notna(row.get("demand")): return float(row["demand"])
+                if pd.isna(row.get("measurement")): return None
+                try:
+                    m = ast.literal_eval(str(row["measurement"]))
+                    return float(m.get("value")) if m.get("value") is not None else None
+                except: return None
+            stream["demand"] = stream.apply(parse_demand, axis=1)
+            
         obs = pd.concat([obs, stream], ignore_index=True)
         obs = obs.drop_duplicates(subset=["observed_at", "station_id"]).sort_values(["station_id", "observed_at"])
     return obs
