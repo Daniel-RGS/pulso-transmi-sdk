@@ -114,13 +114,35 @@ def get_profile_value(profile, station_id, dow, time_slot):
     ]
     return float(p["profile_demand"].values[0]) if not p.empty and p["profile_demand"].values[0] > 0 else None
 
+# ── STATION-SPECIFIC TUNED PARAMETERS (from grid search on historical data) ──
+# Format: station_id -> (w_static, dampening, w_direct)
+# w_static: weight of static drift vs trend drift (higher = more conservative)
+# dampening: how much to slow down the log-trend extrapolation
+# w_direct: weight of direct demand extrapolation vs profile-based prediction
+STATION_PARAMS = {
+    "02300": (0.3, 0.8, 0.5),   # Calle 100 - moderate trend, high direct blend
+    "03000": (0.3, 1.0, 0.2),   # Portal Suba - follow full trend, mostly profile
+    "05000": (0.7, 0.5, 0.2),   # Portal Américas - stable, conservative
+    "05100": (0.7, 0.5, 0.2),   # Banderas - stable, conservative (outlier station)
+    "06000": (0.4, 0.5, 0.5),   # Portal El Dorado - aggressive dampening, high direct
+    "06111": (0.3, 1.0, 0.2),   # Universidades - follow full trend
+    "07105": (0.7, 0.5, 0.2),   # Movistar Arena - stable, conservative
+    "07107": (0.7, 0.5, 0.5),   # U. Nacional - stable with direct blend
+    "07111": (0.5, 0.5, 0.5),   # Ricaurte NQS - balanced, aggressive dampening
+    "09000": (0.3, 1.0, 0.5),   # Portal Usme - full trend + direct blend
+    "09122": (0.7, 1.0, 0.5),   # Calle 72 - conservative trend + direct blend
+    "10009": (0.7, 0.5, 0.2),   # Museo Nacional - conservative (outlier station)
+}
+DEFAULT_PARAMS = (0.4, 0.7, 0.3)  # fallback for unknown stations
+
+
 # ── PREDICTION ─────────────────────────────────────────────────────────────
 def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, n=12):
     """
-    Smart hybrid prediction:
-    1. Profile × drift ratio with dampened log-trend extrapolation
+    Smart hybrid prediction with per-station tuned parameters:
+    1. Profile × drift ratio with log-trend extrapolation (station-tuned dampening)
     2. Direct demand extrapolation as safety net
-    3. Weighted blend based on drift stability
+    3. Weighted blend using station-specific weights from grid search
     """
     st_data = all_obs[
         (all_obs["station_id"] == station_id) & 
@@ -130,6 +152,9 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
     if st_data.empty:
         return 250.0
     
+    # Load per-station parameters
+    w_static, dampening, w_direct = STATION_PARAMS.get(station_id, DEFAULT_PARAMS)
+
     target_dow = target_at.dayofweek
     target_slot = target_at.hour * 4 + target_at.minute // 15
     
@@ -149,7 +174,7 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
     last_time = st_data["observed_at"].iloc[-1]
     steps_ahead = max(1, (target_at - last_time).total_seconds() / 900)
     
-    # ── METHOD 1: Profile × drift with dampened trend ──
+    # ── METHOD 1: Profile × drift with per-station tuned dampening ──
     if not merged.empty:
         ratios = merged["demand"].values / merged["profile_demand"].values
         static_drift = float(np.median(ratios[-4:])) if len(ratios) >= 4 else float(np.median(ratios))
@@ -161,13 +186,13 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
             coeffs = np.polyfit(x, log_ratios, 1)
             log_slope = coeffs[0]
             last_log_ratio = log_ratios[-1]
-            dampened_slope = log_slope * 0.7
+            dampened_slope = log_slope * dampening
             extrapolated_log = last_log_ratio + dampened_slope * steps_ahead
             trend_drift = float(np.exp(np.clip(extrapolated_log, -3, 5)))
         else:
             trend_drift = static_drift
         
-        drift = 0.4 * static_drift + 0.6 * trend_drift
+        drift = w_static * static_drift + (1 - w_static) * trend_drift
         drift = np.clip(drift, 0.01, 100.0)
     else:
         drift = 1.0
@@ -188,16 +213,10 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
     else:
         pred_direct = max(1.0, last_demand)
     
-    # ── BLEND ──
-    if not merged.empty and len(merged) >= 3:
-        recent_ratios = ratios[-4:] if len(ratios) >= 4 else ratios
-        ratio_cv = np.std(recent_ratios) / (np.mean(recent_ratios) + 1e-6)
-        w_direct = min(0.5, ratio_cv)
-    else:
-        w_direct = 0.3
-    
+    # ── BLEND using station-tuned w_direct ──
     final = (1 - w_direct) * pred_profile + w_direct * pred_direct
     return max(1.0, round(final, 2))
+
 
 
 def predict_for_cycle(cycle, all_obs):
