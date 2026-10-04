@@ -138,21 +138,21 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
         (all_obs["observed_at"] <= cutoff)
     ].tail(n).copy()
     
+    target_dow = target_at.dayofweek
+    target_slot = target_at.hour * 4 + target_at.minute // 15
+    base = get_profile_value(profile, station_id, target_dow, target_slot)
+    if base is None:
+        base = 250.0
+
     if st_data.empty:
-        return 250.0
-    
+        # Sin datos de stream: usar perfil histórico directamente
+        return max(1.0, round(base, 2))
+
     # Use globally tuned parameters (validated across all hours of day)
     w_static  = GLOBAL_W_STATIC
     dampening = GLOBAL_DAMPENING
     w_direct  = GLOBAL_W_DIRECT
 
-    target_dow = target_at.dayofweek
-    target_slot = target_at.hour * 4 + target_at.minute // 15
-    
-    base = get_profile_value(profile, station_id, target_dow, target_slot)
-    if base is None:
-        base = 250.0
-    
     # Compute drift ratios for each recent observation
     st_data_p = st_data.copy()
     st_data_p["dow"] = st_data_p["observed_at"].dt.dayofweek
@@ -191,22 +191,30 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
     pred_profile = max(1.0, base * drift)
     
     # ── METHOD 2: Direct demand extrapolation ──
-    demands = st_data["demand"].values
+    # Filtrar NaN antes de calcular
+    demands = st_data["demand"].dropna().values
+    if len(demands) == 0:
+        # Sin datos válidos: usar perfil histórico
+        return max(1.0, round(base, 2))
+
     last_demand = float(demands[-1])
-    
+
     if len(demands) >= 4:
         recent_d = demands[-8:]
         x = np.arange(len(recent_d))
         d_coeffs = np.polyfit(x, recent_d, 1)
         d_slope = d_coeffs[0]
         pred_direct = last_demand + d_slope * steps_ahead * 0.7
-        pred_direct = max(1.0, float(pred_direct))
+        # Usar perfil como piso, no 1.0 (evita predecir 1 pasajero)
+        pred_direct = max(base * 0.3, float(pred_direct))
     else:
-        pred_direct = max(1.0, last_demand)
-    
+        pred_direct = max(base * 0.3, last_demand)
+
     # ── BLEND using station-tuned w_direct ──
     final = (1 - w_direct) * pred_profile + w_direct * pred_direct
-    return max(1.0, round(final, 2))
+    # Piso = 30% del perfil histórico (nunca predecir valores absurdamente bajos)
+    floor = max(1.0, base * 0.3)
+    return max(floor, round(final, 2))
 
 
 
