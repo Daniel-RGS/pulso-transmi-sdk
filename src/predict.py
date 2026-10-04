@@ -297,8 +297,16 @@ def main():
         else:
             preds_df.to_csv(preds_file, mode="a", header=False, index=False)
         print(f"✅ Predicciones guardadas en {preds_file}")
+    elif submit_resp.status_code == 409:
+        # Ya enviamos para este ciclo (idempotency) - salida limpia
+        print(f"✅ Ya existe una submission para este ciclo (409). Nada que hacer.")
     else:
-        print(f"❌ Error al enviar: {submit_resp.text}")
+        err_body = submit_resp.json() if submit_resp.text else {}
+        err_code = err_body.get("detail", {}).get("code", "") if isinstance(err_body.get("detail"), dict) else ""
+        if err_code == "attempt_limit_reached":
+            print(f"⚠️ Límite de intentos alcanzado para este ciclo. El profe lo evaluará con la última submission.")
+        else:
+            print(f"❌ Error al enviar ({submit_resp.status_code}): {submit_resp.text}")
 
 if __name__ == "__main__":
     main()
