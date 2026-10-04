@@ -3,17 +3,20 @@ name: pulso-transmi-pipeline
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/5 * * * *"   # Respaldo en caso de que el self-dispatch falle
 
-# Cancelar runs concurrentes — solo un run a la vez
+# Solo un run activo a la vez — el siguiente espera en cola
 concurrency:
   group: pulso-transmi-pipeline
-  cancel-in-progress: false   # No cancelar el que corre, sino quedar en cola
+  cancel-in-progress: false
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 4   # Ciclos son de 15min, 4 min es suficiente para predict
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
 
     steps:
       - uses: actions/checkout@v4
@@ -31,3 +34,13 @@ jobs:
           PULSO_API_URL: ${{ vars.PULSO_API_URL }}
           PULSO_API_KEY: ${{ secrets.PULSO_API_KEY }}
         run: python -m src.predict
+
+      - name: Re-disparar en 4 minutos
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Esperando 4 minutos para volver a ejecutar..."
+          sleep 240
+          gh workflow run pipeline.yml --repo ${{ github.repository }}
+          echo "Pipeline re-disparado exitosamente."
