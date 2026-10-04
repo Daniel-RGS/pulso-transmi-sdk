@@ -1,11 +1,10 @@
 """
-Script de Predicción - Pulso TransMi
-Verifica ciclos, descarga datos recientes, usa el modelo guardado y envía inferencia.
+Script de Predicción - Pulso TransMi v3
+Estrategia: Profile × Drift Ratio con tendencia dampened + Direct Extrapolation blend
 """
 import os
 import sys
 import uuid
-import pickle
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -29,7 +28,7 @@ def get_client():
     transport = HTTPTransport(retries=3)
     return Client(base_url=API_URL, headers=headers, timeout=60, transport=transport)
 
-# ── DATA & FEATURES (Requeridos para Lags) ───────────────────────────────
+# ── DATA ────────────────────────────────────────────────────────────────────
 def download_starter_data(client):
     """Download the starter CSV files (observations, context, stations)."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -78,106 +77,138 @@ def load_all_observations():
         obs = obs.drop_duplicates(subset=["observed_at", "station_id"]).sort_values(["station_id", "observed_at"])
     return obs
 
-def load_context():
-    ctx = pd.read_csv(DATA_DIR / "context.csv", parse_dates=["observed_at"])
-    ctx["observed_at"] = pd.to_datetime(ctx["observed_at"], utc=True)
-    return ctx
+# ── PROFILE BUILDING ────────────────────────────────────────────────────────
+def build_clean_profile():
+    """
+    Build the baseline demand profile from observations.csv (pre-drift data).
+    Uses median demand per (station_id, dow, time_slot) for robustness.
+    """
+    obs_clean = pd.read_csv(DATA_DIR / "observations.csv", dtype={"station_id": "string"}, parse_dates=["observed_at"])
+    obs_clean["observed_at"] = pd.to_datetime(obs_clean["observed_at"], utc=True)
+    obs_clean["dow"] = obs_clean["observed_at"].dt.dayofweek
+    obs_clean["time_slot"] = obs_clean["observed_at"].dt.hour * 4 + obs_clean["observed_at"].dt.minute // 15
+    
+    profile = obs_clean.groupby(["station_id", "dow", "time_slot"])["demand"].median().reset_index()
+    profile.columns = ["station_id", "dow", "time_slot", "profile_demand"]
+    return profile
 
-def build_features(obs: pd.DataFrame, ctx: pd.DataFrame) -> pd.DataFrame:
-    df = obs.copy()
-    df["hour"] = df["observed_at"].dt.hour
-    df["minute"] = df["observed_at"].dt.minute
-    df["dow"] = df["observed_at"].dt.dayofweek
-    df["is_weekend"] = (df["dow"] >= 5).astype(int)
-    df["time_slot"] = df["hour"] * 4 + df["minute"] // 15
-    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-    df["dow_sin"] = np.sin(2 * np.pi * df["dow"] / 7)
-    df["dow_cos"] = np.cos(2 * np.pi * df["dow"] / 7)
-    df = df.sort_values(["station_id", "observed_at"])
-    for lag in [1, 2, 3, 4, 96, 672]:
-        df[f"lag_{lag}"] = df.groupby("station_id")["demand"].shift(lag)
-    for window in [4, 12, 96]:
-        df[f"rolling_mean_{window}"] = df.groupby("station_id")["demand"].transform(lambda x: x.shift(1).rolling(window, min_periods=1).mean())
-    df["profile_key"] = df["station_id"] + "_" + df["dow"].astype(str) + "_" + df["time_slot"].astype(str)
-    df["adaptive_profile"] = df.groupby("profile_key")["demand"].transform(lambda x: x.shift(1).ewm(halflife=4, min_periods=1).mean())
-    
-    # NEW DRIFT LOGIC
-    df["base_shape"] = df["adaptive_profile"].fillna(df["lag_672"]).fillna(df["rolling_mean_96"]).fillna(1.0)
-    df["base_shape"] = np.maximum(df["base_shape"], 1.0)
-    
-    df["raw_drift_ratio"] = df["demand"] / df["base_shape"]
-    def get_drift(x):
-        return x.shift(1).rolling(4, min_periods=1).median()
-    df["drift_multiplier"] = df.groupby("station_id")["raw_drift_ratio"].transform(get_drift).fillna(1.0)
-    
-    df["s_scale"] = df["base_shape"] * df["drift_multiplier"]
-    df["s_scale"] = np.maximum(df["s_scale"], 1.0)
-
-    ctx_cols = ["observed_at", "temperature_c", "rain_mm", "event_intensity"]
-    available_cols = [c for c in ctx_cols if c in ctx.columns]
-    if len(available_cols) > 1: df = df.merge(ctx[available_cols], on="observed_at", how="left")
-    return df
+def get_profile_value(profile, station_id, dow, time_slot):
+    """Get the profile demand for a specific station/dow/time_slot."""
+    p = profile[
+        (profile["station_id"] == station_id) & 
+        (profile["dow"] == dow) & 
+        (profile["time_slot"] == time_slot)
+    ]
+    return float(p["profile_demand"].values[0]) if not p.empty and p["profile_demand"].values[0] > 0 else None
 
 # ── PREDICTION ─────────────────────────────────────────────────────────────
-def predict_for_cycle(cycle: dict, obs: pd.DataFrame, ctx: pd.DataFrame, model_data: dict) -> list:
-    targets = cycle["targets"]
-    models = model_data["models"]
-    feat_cols = model_data["features"]
+def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, n=12):
+    """
+    Smart hybrid prediction:
+    1. Profile × drift ratio with dampened log-trend extrapolation
+    2. Direct demand extrapolation as safety net
+    3. Weighted blend based on drift stability
+    """
+    st_data = all_obs[
+        (all_obs["station_id"] == station_id) & 
+        (all_obs["observed_at"] <= cutoff)
+    ].tail(n).copy()
     
-    featured = build_features(obs, ctx)
+    if st_data.empty:
+        return 250.0
+    
+    target_dow = target_at.dayofweek
+    target_slot = target_at.hour * 4 + target_at.minute // 15
+    
+    base = get_profile_value(profile, station_id, target_dow, target_slot)
+    if base is None:
+        base = 250.0
+    
+    # Compute drift ratios for each recent observation
+    st_data_p = st_data.copy()
+    st_data_p["dow"] = st_data_p["observed_at"].dt.dayofweek
+    st_data_p["time_slot"] = st_data_p["observed_at"].dt.hour * 4 + st_data_p["observed_at"].dt.minute // 15
+    merged = st_data_p.merge(profile, on=["station_id", "dow", "time_slot"], how="left")
+    merged = merged.dropna(subset=["profile_demand"])
+    merged = merged[merged["profile_demand"] > 0].reset_index(drop=True)
+    
+    # Steps ahead from last observation
+    last_time = st_data["observed_at"].iloc[-1]
+    steps_ahead = max(1, (target_at - last_time).total_seconds() / 900)
+    
+    # ── METHOD 1: Profile × drift with dampened trend ──
+    if not merged.empty:
+        ratios = merged["demand"].values / merged["profile_demand"].values
+        static_drift = float(np.median(ratios[-4:])) if len(ratios) >= 4 else float(np.median(ratios))
+        
+        if len(ratios) >= 4:
+            recent = ratios[-8:]
+            log_ratios = np.log(np.maximum(recent, 0.01))
+            x = np.arange(len(log_ratios))
+            coeffs = np.polyfit(x, log_ratios, 1)
+            log_slope = coeffs[0]
+            last_log_ratio = log_ratios[-1]
+            dampened_slope = log_slope * 0.7
+            extrapolated_log = last_log_ratio + dampened_slope * steps_ahead
+            trend_drift = float(np.exp(np.clip(extrapolated_log, -3, 5)))
+        else:
+            trend_drift = static_drift
+        
+        drift = 0.4 * static_drift + 0.6 * trend_drift
+        drift = np.clip(drift, 0.01, 100.0)
+    else:
+        drift = 1.0
+    
+    pred_profile = max(1.0, base * drift)
+    
+    # ── METHOD 2: Direct demand extrapolation ──
+    demands = st_data["demand"].values
+    last_demand = float(demands[-1])
+    
+    if len(demands) >= 4:
+        recent_d = demands[-8:]
+        x = np.arange(len(recent_d))
+        d_coeffs = np.polyfit(x, recent_d, 1)
+        d_slope = d_coeffs[0]
+        pred_direct = last_demand + d_slope * steps_ahead * 0.7
+        pred_direct = max(1.0, float(pred_direct))
+    else:
+        pred_direct = max(1.0, last_demand)
+    
+    # ── BLEND ──
+    if not merged.empty and len(merged) >= 3:
+        recent_ratios = ratios[-4:] if len(ratios) >= 4 else ratios
+        ratio_cv = np.std(recent_ratios) / (np.mean(recent_ratios) + 1e-6)
+        w_direct = min(0.5, ratio_cv)
+    else:
+        w_direct = 0.3
+    
+    final = (1 - w_direct) * pred_profile + w_direct * pred_direct
+    return max(1.0, round(final, 2))
+
+
+def predict_for_cycle(cycle, all_obs):
+    targets = cycle["targets"]
+    cutoff = pd.Timestamp(cycle["data_cutoff"]).tz_convert("UTC")
+    profile = build_clean_profile()
+    
     predictions = []
+    drift_info = {}
     
     for target in targets:
         station_id = target["station_id"]
         target_at = pd.Timestamp(target["target_at"]).tz_convert("UTC")
-        if station_id not in models:
-            predictions.append({"station_id": station_id, "target_at": target["target_at"], "value": 250.0})
-            continue
-
-        model = models[station_id]
-        station_hist = featured[featured["station_id"] == station_id].copy()
-        if station_hist.empty:
-            predictions.append({"station_id": station_id, "target_at": target["target_at"], "value": 250.0})
-            continue
-
-        last_row = station_hist.iloc[-1].copy()
-        hour = target_at.hour
-        minute = target_at.minute
-        dow = target_at.dayofweek
-
-        last_row["hour"] = hour
-        last_row["minute"] = minute
-        last_row["dow"] = dow
-        last_row["is_weekend"] = 1 if dow >= 5 else 0
-        last_row["time_slot"] = hour * 4 + minute // 15
-        last_row["hour_sin"] = np.sin(2 * np.pi * hour / 24)
-        last_row["hour_cos"] = np.cos(2 * np.pi * hour / 24)
-        last_row["dow_sin"] = np.sin(2 * np.pi * dow / 7)
-        last_row["dow_cos"] = np.cos(2 * np.pi * dow / 7)
-
-        same_slot = station_hist[(station_hist["dow"] == dow) & (station_hist["time_slot"] == hour * 4 + minute // 15)]
-        if not same_slot.empty:
-            last_row["adaptive_profile"] = same_slot["adaptive_profile"].iloc[-1]
-            last_row["lag_672"] = same_slot["demand"].iloc[-1]
-
-        # --- ESTRATEGIA ALLISON MEJORADA (DES-NORMALIZACIÓN DE DRIFT PURA) ---
-        base_shape = last_row.get("adaptive_profile")
-        if pd.isna(base_shape): base_shape = last_row.get("lag_672", 1.0)
-        if pd.isna(base_shape): base_shape = last_row.get("rolling_mean_96", 1.0)
-        base_shape = max(base_shape, 1.0)
         
-        drift_mult = float(last_row.get("drift_multiplier", 1.0))
-        if pd.isna(drift_mult): drift_mult = 1.0
+        pred_value = predict_for_station_target(
+            station_id, target_at, all_obs, profile, cutoff
+        )
         
-        s = base_shape * drift_mult
-        s = max(s, 1.0)
-
-        feat_values = [float(last_row.get(col, 0) if pd.notna(last_row.get(col, 0)) else 0) for col in feat_cols]
-        pred_norm = max(0, model.predict(np.array([feat_values]))[0])
-        pred_value = pred_norm * s
-        predictions.append({"station_id": station_id, "target_at": target["target_at"], "value": round(pred_value, 2)})
-
+        predictions.append({
+            "station_id": station_id,
+            "target_at": target["target_at"],
+            "value": pred_value
+        })
+    
     return predictions
 
 # ── MAIN ────────────────────────────────────────────────────────────────────
@@ -197,27 +228,25 @@ def main():
         print(f"✅ Ciclo {cycle.get('cycle_id')} no está abierto.")
         sys.exit(0)
 
-    model_path = ARTIFACTS_DIR / "models.pkl"
-    if not model_path.exists():
-        sys.exit("❌ Error: No se encontró artifacts/models.pkl. ¡Falta reentrenar!")
-
-    with open(model_path, "rb") as f:
-        model_data = pickle.load(f)
-
     print(f"Ciclo encontrado: {cycle['cycle_id']}")
     download_starter_data(client)
     download_stream_data(client)
     obs = load_all_observations()
-    ctx = load_context()
     
-    predictions = predict_for_cycle(cycle, obs, ctx, model_data)
+    predictions = predict_for_cycle(cycle, obs)
+    
+    # Print summary
+    for p in predictions[:4]:
+        print(f"  {p['station_id']} @ {p['target_at']}: {p['value']}")
+    if len(predictions) > 4:
+        print(f"  ... ({len(predictions)} predicciones total)")
     
     payload = {
         "schema_version": "1.0",
         "cycle_id": cycle["cycle_id"],
         "client_run_id": f"run-{uuid.uuid4().hex[:8]}",
         "data_cutoff": cycle["data_cutoff"],
-        "model": {"version": model_data.get("version", "unknown")},
+        "model": {"version": "profile-drift-v3"},
         "predictions": predictions,
     }
 
@@ -225,7 +254,7 @@ def main():
     if submit_resp.status_code == 201:
         print(f"✅ Submission exitosa: {submit_resp.json()['submission_id']}")
         
-        # Guardar predicciones localmente para el monitor.py
+        # Guardar predicciones localmente
         preds_df = pd.DataFrame(predictions)
         preds_df["cycle_id"] = cycle["cycle_id"]
         preds_df["predicted_at"] = datetime.now(timezone.utc).isoformat()
@@ -235,7 +264,7 @@ def main():
             preds_df.to_csv(preds_file, index=False)
         else:
             preds_df.to_csv(preds_file, mode="a", header=False, index=False)
-        print(f"✅ Predicciones guardadas localmente en {preds_file} para monitoreo.")
+        print(f"✅ Predicciones guardadas en {preds_file}")
     else:
         print(f"❌ Error al enviar: {submit_resp.text}")
 
