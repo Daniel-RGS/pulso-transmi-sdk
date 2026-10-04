@@ -114,35 +114,24 @@ def get_profile_value(profile, station_id, dow, time_slot):
     ]
     return float(p["profile_demand"].values[0]) if not p.empty and p["profile_demand"].values[0] > 0 else None
 
-# ── STATION-SPECIFIC TUNED PARAMETERS (from grid search on historical data) ──
-# Format: station_id -> (w_static, dampening, w_direct)
-# w_static: weight of static drift vs trend drift (higher = more conservative)
-# dampening: how much to slow down the log-trend extrapolation
-# w_direct: weight of direct demand extrapolation vs profile-based prediction
-STATION_PARAMS = {
-    "02300": (0.3, 0.8, 0.5),   # Calle 100 - moderate trend, high direct blend
-    "03000": (0.3, 1.0, 0.2),   # Portal Suba - follow full trend, mostly profile
-    "05000": (0.7, 0.5, 0.2),   # Portal Américas - stable, conservative
-    "05100": (0.7, 0.5, 0.2),   # Banderas - stable, conservative (outlier station)
-    "06000": (0.4, 0.5, 0.5),   # Portal El Dorado - aggressive dampening, high direct
-    "06111": (0.3, 1.0, 0.2),   # Universidades - follow full trend
-    "07105": (0.7, 0.5, 0.2),   # Movistar Arena - stable, conservative
-    "07107": (0.7, 0.5, 0.5),   # U. Nacional - stable with direct blend
-    "07111": (0.5, 0.5, 0.5),   # Ricaurte NQS - balanced, aggressive dampening
-    "09000": (0.3, 1.0, 0.5),   # Portal Usme - full trend + direct blend
-    "09122": (0.7, 1.0, 0.5),   # Calle 72 - conservative trend + direct blend
-    "10009": (0.7, 0.5, 0.2),   # Museo Nacional - conservative (outlier station)
-}
-DEFAULT_PARAMS = (0.4, 0.7, 0.3)  # fallback for unknown stations
+# ── GLOBALLY TUNED PARAMETERS (grid search across morning, midday, afternoon, evening) ──
+# Validated on 4 different time-of-day windows to avoid overfitting to a single period.
+# w_static=0.6: more weight to stable historical profile (prevents drift runaway)
+# dampening=0.5: moderate trend dampening - neutral across all hours
+# w_direct=0.2: small direct extrapolation weight - profile dominates
+GLOBAL_W_STATIC  = 0.6
+GLOBAL_DAMPENING = 0.5
+GLOBAL_W_DIRECT  = 0.2
+
 
 
 # ── PREDICTION ─────────────────────────────────────────────────────────────
 def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, n=12):
     """
-    Smart hybrid prediction with per-station tuned parameters:
-    1. Profile × drift ratio with log-trend extrapolation (station-tuned dampening)
+    Smart hybrid prediction with globally-tuned parameters:
+    1. Profile × drift ratio with log-trend extrapolation (globally validated dampening)
     2. Direct demand extrapolation as safety net
-    3. Weighted blend using station-specific weights from grid search
+    3. Weighted blend validated across all time-of-day windows
     """
     st_data = all_obs[
         (all_obs["station_id"] == station_id) & 
@@ -152,8 +141,10 @@ def predict_for_station_target(station_id, target_at, all_obs, profile, cutoff, 
     if st_data.empty:
         return 250.0
     
-    # Load per-station parameters
-    w_static, dampening, w_direct = STATION_PARAMS.get(station_id, DEFAULT_PARAMS)
+    # Use globally tuned parameters (validated across all hours of day)
+    w_static  = GLOBAL_W_STATIC
+    dampening = GLOBAL_DAMPENING
+    w_direct  = GLOBAL_W_DIRECT
 
     target_dow = target_at.dayofweek
     target_slot = target_at.hour * 4 + target_at.minute // 15
